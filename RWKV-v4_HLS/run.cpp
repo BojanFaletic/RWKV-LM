@@ -1,9 +1,10 @@
 #include <iostream>
 
 #include "tensor.hpp"
-#include "linear.hpp"
+#include "layers.hpp"
 
-void test_vector(){
+void test_vector()
+{
     auto T2 = Tensor1d<short, 16>::rand();
     auto T1 = Tensor2d<short, 16, 2>::zeros();
     auto T0 = Tensor3d<short, 16, 2, 1>::zeros();
@@ -23,25 +24,22 @@ void test_vector(){
     std::cout << "Hello world \n";
 
     std::cout << T0 << '\n';
-
 }
 
-
-void test_linear(){
+void test_linear()
+{
     Linear L0 = Linear<short, 2, 3>();
 
-    Tensor2d T0 = Tensor2d<short, 2,3>::ones();
+    Tensor2d T0 = Tensor2d<short, 2, 3>::ones();
 
     auto k = L0(T0);
 
     std::cout << k;
-
 }
 
-int main(){
+int main()
+{
     test_linear();
 
-
     return 0;
-
 }

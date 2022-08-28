@@ -5,6 +5,13 @@
 #include <random>
 #include <iostream>
 
+namespace std{
+template<typename _InputIterator, typename _Size, typename _Function>
+    _GLIBCXX20_CONSTEXPR
+    _InputIterator
+  for_each_n(_InputIterator __first, _Size __n, _Function __f);
+};
+
 using uint = unsigned int;
 
 template <typename T, uint len>
