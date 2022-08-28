@@ -26,8 +26,20 @@ void test_vector(){
 
 }
 
+
+void test_linear(){
+    Linear L0 = Linear<short, 2, 3>();
+
+    Tensor2d T0 = Tensor2d<short, 2,3>::ones();
+
+    auto k = L0(T0);
+
+    std::cout << k;
+
+}
+
 int main(){
-    test_vector();
+    test_linear();
 
 
     return 0;

@@ -12,7 +12,6 @@ class Tensor1d
 {
 private:
     std::array<T, len> tensor;
-
 public:
     Tensor1d() = default;
 
@@ -66,6 +65,11 @@ public:
     {
         return tensor[idx];
     }
+
+    T operator[] (int const idx) const
+    {
+        return tensor[idx];
+    }
 };
 
 template <typename T, uint h, uint w>
@@ -73,9 +77,10 @@ class Tensor2d
 {
 private:
     std::array<Tensor1d<T, w>, h> tensor;
-
 public:
+    std::array<uint, 2> shape{h, w};
     Tensor2d() = default;
+
 
     Tensor2d(const std::array<Tensor1d<T, w>, h> &init) : tensor{init}
     {
@@ -131,6 +136,11 @@ public:
     {
         return tensor[idx];
     }
+
+    Tensor1d<T, w> operator[] (int const idx) const
+    {
+        return tensor[idx];
+    }
 };
 
 template <typename T, uint h, uint w, uint z>
@@ -139,7 +149,9 @@ class Tensor3d
 private:
     std::array<Tensor2d<T, w, h>, z> tensor;
 
+
 public:
+    std::array<uint, 3> SH{h, w, z};
     Tensor3d() = default;
 
     Tensor3d(const std::array<Tensor2d<T, w, h>, z> &init) : tensor{init}
@@ -193,6 +205,11 @@ public:
     }
 
     Tensor2d<T, w, h> &operator[](int const idx)
+    {
+        return tensor[idx];
+    }
+
+    Tensor2d<T, w, h> &operator[] (int const idx) const
     {
         return tensor[idx];
     }
