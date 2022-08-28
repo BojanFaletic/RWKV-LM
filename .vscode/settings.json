@@ -1,0 +1,3 @@
+{
+    "clang-tidy.compilerArgs": ["-I/home/bojan/git/RWKV-LM/RWKV-v4_HLS/src -std=c++20"]
+}
