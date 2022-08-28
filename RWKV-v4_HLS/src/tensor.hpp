@@ -4,12 +4,14 @@
 #include <ostream>
 #include <random>
 #include <iostream>
+#include <limits.h>
 
-namespace std{
-template<typename _InputIterator, typename _Size, typename _Function>
+namespace std
+{
+    template <typename _InputIterator, typename _Size, typename _Function>
     _GLIBCXX20_CONSTEXPR
-    _InputIterator
-  for_each_n(_InputIterator __first, _Size __n, _Function __f);
+        _InputIterator
+        for_each_n(_InputIterator __first, _Size __n, _Function __f);
 };
 
 using uint = unsigned int;
@@ -19,6 +21,7 @@ class Tensor1d
 {
 private:
     std::array<T, len> tensor;
+
 public:
     Tensor1d() = default;
 
@@ -45,8 +48,10 @@ public:
     static Tensor1d<T, len> rand()
     {
         std::array<T, len> tensor;
-        std::for_each_n(&tensor[0], len, [](T &x)
-                        { x = std::rand(); });
+
+        // This could be better (use correct normal distribution)
+        std::for_each_n(&tensor[0], len, [=](T &x)
+                        { x = static_cast<T>(std::rand() % 1000) / 500; });
         return Tensor1d(tensor);
     }
 
@@ -68,14 +73,85 @@ public:
         return os;
     }
 
+    Tensor1d operator+(T const i)
+    {
+        Tensor1d out{tensor};
+        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                        { x += i; });
+        return out;
+    }
+
+    Tensor1d operator-(T const i) const
+    {
+        Tensor1d out{tensor};
+        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                        { x -= i; });
+        return out;
+    }
+
+    Tensor1d operator/(T const i)
+    {
+        Tensor1d out{tensor};
+        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                        { x /= i; });
+        return out;
+    }
+
+    Tensor1d operator*(T const i)
+    {
+        Tensor1d out{tensor};
+        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                        { x *= i; });
+        return out;
+    }
+
+    Tensor1d operator*(Tensor1d const &ten) const
+    {
+        Tensor1d out{tensor};
+        uint i=0;
+        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                        { x *= ten[i++]; });
+        return out;
+    }
+
+    Tensor1d operator+(Tensor1d const &ten) const
+    {
+        Tensor1d out{tensor};
+        uint i=0;
+        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                        { x += ten[i++]; });
+        return out;
+    }
+
     T &operator[](int const idx)
     {
         return tensor[idx];
     }
 
-    T operator[] (int const idx) const
+    T operator[](int const idx) const
     {
         return tensor[idx];
+    }
+
+    T mean() const
+    {
+        return std::accumulate(tensor.begin(), tensor.end(), 0.) / len;
+    }
+
+    T var() const
+    {
+        T _mean = mean();
+        T acc = 0;
+        std::for_each_n(tensor.begin(), len, [&](T x)
+                        { acc += std::pow(x - _mean, 2); });
+        return acc / len;
+    }
+
+    Tensor1d sqrt() const{
+        Tensor1d ten = Tensor1d(tensor);
+        std::for_each_n(ten.tensor.begin(), len, [&](T &x)
+                        { x = std::sqrt(x); });
+        return ten;
     }
 };
 
@@ -84,10 +160,10 @@ class Tensor2d
 {
 private:
     std::array<Tensor1d<T, w>, h> tensor;
+
 public:
     std::array<uint, 2> shape{h, w};
     Tensor2d() = default;
-
 
     Tensor2d(const std::array<Tensor1d<T, w>, h> &init) : tensor{init}
     {
@@ -109,7 +185,7 @@ public:
         return Tensor2d(tensor);
     }
 
-    static Tensor2d rand()
+    Tensor2d rand()
     {
         std::array<Tensor1d<T, w>, h> tensor;
         std::for_each_n(&tensor[0], h, [](auto &x)
@@ -144,7 +220,7 @@ public:
         return tensor[idx];
     }
 
-    Tensor1d<T, w> operator[] (int const idx) const
+    Tensor1d<T, w> operator[](int const idx) const
     {
         return tensor[idx];
     }
@@ -155,7 +231,6 @@ class Tensor3d
 {
 private:
     std::array<Tensor2d<T, w, h>, z> tensor;
-
 
 public:
     std::array<uint, 3> SH{h, w, z};
@@ -216,7 +291,7 @@ public:
         return tensor[idx];
     }
 
-    Tensor2d<T, w, h> &operator[] (int const idx) const
+    Tensor2d<T, w, h> &operator[](int const idx) const
     {
         return tensor[idx];
     }

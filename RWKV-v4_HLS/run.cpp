@@ -24,6 +24,15 @@ void test_vector()
     std::cout << "Hello world \n";
 
     std::cout << T0 << '\n';
+
+
+    auto T4 = Tensor1d<float, 4>::rand();
+    std::cout << T4 << '\n';
+    std::cout << "Mean: " << T4.mean() << '\n';
+    std::cout << "Var: " << T4.var() << '\n';
+    std::cout << "sqrt: " << T4.sqrt() << '\n';
+
+
 }
 
 void test_linear()
@@ -37,9 +46,26 @@ void test_linear()
     std::cout << k;
 }
 
+void test_ln(){
+    Tensor1d T0 = Tensor1d<float, 8>::rand();
+    LayerNorm ln = LayerNorm<float, 8>();
+
+    std::cout << T0 << '\n';
+    std::cout << ln(T0) << '\n';
+
+    std::cout << "mean:" << T0.mean() << '\n';
+    std::cout << "var:" << T0.var() << '\n';
+
+
+
+}
+
+
 int main()
 {
-    test_linear();
+    //test_vector();
+    //test_linear();
+    test_ln();
 
     return 0;
 }
