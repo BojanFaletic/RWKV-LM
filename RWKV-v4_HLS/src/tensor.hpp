@@ -6,20 +6,34 @@
 #include <iostream>
 #include <limits.h>
 
+using uint = unsigned int;
+
+template <typename T, uint len>
+class Tensor1d;
+
+
 namespace std
 {
     template <typename _InputIterator, typename _Size, typename _Function>
     _GLIBCXX20_CONSTEXPR
         _InputIterator
         for_each_n(_InputIterator __first, _Size __n, _Function __f);
-};
 
-using uint = unsigned int;
+
+    template<typename T, uint n>
+    Tensor1d<T, n> sqrt(Tensor1d<T, n> const &v){
+        Tensor1d out{v};
+        for (auto &el : out.tensor){
+            el = std::sqrt(el);
+        }
+        return out;
+    }
+};
 
 template <typename T, uint len>
 class Tensor1d
 {
-private:
+public:
     std::array<T, len> tensor;
 
 public:
@@ -185,7 +199,7 @@ public:
         return Tensor2d(tensor);
     }
 
-    Tensor2d rand()
+    static Tensor2d rand()
     {
         std::array<Tensor1d<T, w>, h> tensor;
         std::for_each_n(&tensor[0], h, [](auto &x)
@@ -215,6 +229,30 @@ public:
         return os;
     }
 
+    template<typename Tt>
+    Tensor2d<T, h, w> operator-(Tt const i) const{
+        Tensor2d out{tensor};
+
+        // TODO: FIX this
+        for (Tensor1d<T, w> &el : out.tensor){
+            for (auto &ee : el.tensor){
+                std::cout << ee;
+                //ee = ee - i;
+            }
+        }
+        return out;
+    }
+
+    template<typename Tt, uint len>
+    Tensor2d<T, h, w> operator/(Tensor1d<Tt, len> const &ten) const{
+        Tensor2d<T, h, w> out{tensor};
+
+        for (auto &el : out.tensor){
+            el = el / ten;
+        }
+        return out;
+    }
+
     Tensor1d<T, w> &operator[](int const idx)
     {
         return tensor[idx];
@@ -223,6 +261,24 @@ public:
     Tensor1d<T, w> operator[](int const idx) const
     {
         return tensor[idx];
+    }
+
+    Tensor1d<T, w> mean() const
+    {
+        std::array<T, w> mean_values;
+        for (uint i=0; i<w; i++){
+            mean_values[i] = tensor[i].mean();
+        }
+        return Tensor1d<T, w>(mean_values);
+    }
+
+    Tensor1d<T, w> var() const
+    {
+        std::array<T, w> var_values;
+        for (uint i=0; i<w; i++){
+            var_values[i] = tensor[i].var();
+        }
+        return Tensor1d<T, w>(var_values);
     }
 };
 

@@ -57,6 +57,9 @@ void test_ln(){
     std::cout << "var:" << T0.var() << '\n';
 
 
+    Tensor2d T1 = Tensor2d<float, 1, 8>::rand();
+    std::cout << ln(T1) << '\n';
+
 
 }
 

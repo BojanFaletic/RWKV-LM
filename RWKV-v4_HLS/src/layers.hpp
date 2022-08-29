@@ -59,8 +59,20 @@ public:
     template<typename tt, uint M>
     Tensor1d<T, N> operator()(Tensor1d<tt, M> const &data)
     {
+        static_assert(std::is_same<tt, T>::value, "Not same type");
+        static_assert(N == M, "Wrong dimensions");
+
         Tensor1d out = (data - data.mean()) / std::sqrt(data.var() + eps);
         out = out * weights + bias;
         return out;
+    }
+
+    template<typename tt, uint H, uint W>
+    Tensor1d<T, N> operator()(Tensor2d<tt, H, W> const &data)
+    {
+        Tensor2d out = (data - data.mean()); // / std::sqrt(data.var() + eps);
+        //out = out * weights + bias;
+        //return out;
+        return {};
     }
 };
