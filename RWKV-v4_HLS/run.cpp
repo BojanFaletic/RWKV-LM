@@ -47,18 +47,21 @@ void test_linear()
 }
 
 void test_ln(){
-    Tensor1d T0 = Tensor1d<float, 8>::rand();
     LayerNorm ln = LayerNorm<float, 8>();
+    Tensor1d T0 = Tensor1d<float, 8>::rand();
+
+    #if 0
 
     std::cout << T0 << '\n';
     std::cout << ln(T0) << '\n';
 
     std::cout << "mean:" << T0.mean() << '\n';
     std::cout << "var:" << T0.var() << '\n';
-
+    #endif
 
     Tensor2d T1 = Tensor2d<float, 1, 8>::rand();
-    std::cout << ln(T1) << '\n';
+    auto el = ln(T1);
+    //std::cout << el << '\n';
 
 
 }
@@ -69,6 +72,8 @@ int main()
     //test_vector();
     //test_linear();
     test_ln();
+
+
 
     return 0;
 }
