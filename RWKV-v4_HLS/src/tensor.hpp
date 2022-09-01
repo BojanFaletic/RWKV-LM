@@ -43,6 +43,8 @@ public:
 
     Tensor1d() = default;
 
+    Tensor1d(Tensor1d const &ten) : tensor{ten.tensor}{}
+
     Tensor1d(const std::array<T, len> &init) : tensor{init}
     {
     }
@@ -125,10 +127,11 @@ public:
 
             return out;
         }
-        Tensor1d out{ten};
-        std::for_each_n(out.tensor.begin(), len, [&](T &x)
+
+        std::array<Tt, ll> out{ten};
+        std::for_each_n(out.begin(), len, [&](T &x)
                         { x -= tensor[0]; });
-        return out;
+        return {out};
     }
 
     Tensor1d operator/(T const i)
@@ -279,11 +282,9 @@ public:
         std::cout << vect.shape() << '\n';
         std::cout << out.shape() << '\n';
 
-        #if 0
         for (auto &el : out.tensor){
-            el - tmp;
+            el = el - vect;
         }
-        #endif
         return out;
     }
 
@@ -300,10 +301,16 @@ public:
 
     template<typename Tt, uint ll>
     Tensor2d<T, h, w> operator/(Tensor1d<Tt, ll> const &ten) const{
-        Tensor2d<T, h, w> out{tensor};
+        Tensor2d out{tensor};
 
-        // TODO
-        static_assert(h == ll, "Dimention 0 mismach /");
+        static_assert((h == ll) || (h == 1), "Dimention 0 mismach /");
+
+        if constexpr (h == 1){
+            for (auto &el : out.tensor){
+                el = el / ten[0];
+            }
+            return out;
+        }
 
         uint j=0;
         for (auto &el : out.tensor){
@@ -341,13 +348,13 @@ public:
         return {mean_values};
     }
 
-    Tensor1d<T, w> var() const
+    Tensor1d<T, h> var() const
     {
-        std::array<T, w> var_values;
-        for (uint i=0; i<w; i++){
+        std::array<T, h> var_values;
+        for (uint i=0; i<h; i++){
             var_values[i] = tensor[i].var();
         }
-        return Tensor1d<T, w>(var_values);
+        return {var_values};
     }
 };
 

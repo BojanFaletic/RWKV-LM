@@ -76,7 +76,7 @@ public:
     Tensor2d<tt, H, W> operator()(Tensor2d<tt, H, W> const &data)
     {
         Tensor2d out = (data - data.mean()) / std::sqrt(data.var() + eps);
-        //out = out * weights;// + bias;
+        out = out * weights;// + bias;
         //return out;
         return {};
     }

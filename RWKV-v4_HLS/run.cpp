@@ -61,7 +61,7 @@ void test_ln(){
 
     Tensor2d T1 = Tensor2d<float, 1, 8>::rand();
     auto el = ln(T1);
-    //std::cout << el << '\n';
+    std::cout << el << '\n';
 
 
 }
