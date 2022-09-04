@@ -17,7 +17,7 @@ DEBUG_TIME = False   # True False - show trained time-coeffs
 ########################################################################################################
 # CUDA Kernel
 ########################################################################################################
-
+'''
 if os.environ['RWKV_RUN_DEVICE'] == 'cuda':
     T_MAX = 4096 # increase this if your ctx_len is long
     # it's possible to go beyond CUDA limitations if you slice the ctx and pass the hidden state in each slice
@@ -81,6 +81,21 @@ if os.environ['RWKV_RUN_DEVICE'] == 'cuda':
 
     def RUN_CUDA(B, T, C, w, u, k, v):
         return WKV.apply(B, T, C, w.cuda(), u.cuda(), k.cuda(), v.cuda())
+'''
+
+def RUN_CUDA(B, T, C, w, u, k, v, time_curve=1):
+    # this shall equal the formula
+
+    ek = torch.exp(k.transpose(1,2))
+    ekv = ek * v.transpose(1,2)
+
+    time_w = torch.cat([torch.exp(w).unsqueeze(1) * time_curve, u.unsqueeze(1)], dim=-1)
+    w = torch.exp(time_w).unsqueeze(1)
+
+    wkv = F.conv1d(nn.ZeroPad2d((T-1, 0, 0, 0))(ekv), w, groups=C)
+    wk = F.conv1d(nn.ZeroPad2d((T-1, 0, 0, 0))(ek), w, groups=C)
+
+    return (wkv / wk).transpose(1,2)
 
 ############################################################################################################
 
@@ -108,7 +123,7 @@ class RWKV_ChannelMix(nn.Module):
         k = self.key(xk)
         k = torch.square(torch.relu(k))
         kv = self.value(k)
-        
+
         rkv = torch.sigmoid(self.receptance(xr)) * kv
         return rkv
 
@@ -118,7 +133,7 @@ class RWKV_TimeMix(nn.Module):
         self.layer_id = layer_id
         self.time_decay = nn.Parameter(torch.ones(RWKV_CFG.n_embd))
         self.time_first = nn.Parameter(torch.ones(RWKV_CFG.n_embd) * math.log(0.3))
-        
+
         self.time_shift = nn.ZeroPad2d((0,0,1,-1))
         self.time_mix_k = nn.Parameter(torch.ones(1,1,RWKV_CFG.n_embd))
         self.time_mix_v = nn.Parameter(torch.ones(1,1,RWKV_CFG.n_embd))
@@ -143,7 +158,7 @@ class RWKV_TimeMix(nn.Module):
         r = self.receptance(xr)
 
         rwkv = torch.sigmoid(r) * RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v)
-        
+
         rwkv = self.output(rwkv)
         return rwkv
 
@@ -211,7 +226,7 @@ class RWKV_GPT(nn.Module):
     def forward(self, idx):
         B, T = idx.size()
         assert T <= self.ctx_len, "Cannot forward, because len(input) > model ctx_len."
-        
+
         x = self.emb(idx)
         x = self.blocks(x)
         x = self.ln_out(x)
@@ -225,7 +240,7 @@ class RWKV_GPT(nn.Module):
             c = c @ F.one_hot(idx, num_classes=RWKV_CFG.vocab_size).float()
             x = self.head(x) + c
         else:
-            x = self.head(x)        
+            x = self.head(x)
 
         return x
 

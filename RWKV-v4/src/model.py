@@ -8,7 +8,7 @@ import logging
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from deepspeed.ops.adam import FusedAdam 
+#from deepspeed.ops.adam import FusedAdam
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ print(f'\nRWKV_HEAD_QK_DIM {RWKV_HEAD_QK_DIM}\n')
 T_MAX = 4096 # increase this if your ctx_len is long
 # it's possible to go beyond CUDA limitations if you slice the ctx and pass the hidden state in each slice
 
+'''
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"],
                 verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}'])
@@ -81,6 +82,21 @@ class WKV(torch.autograd.Function):
 
 def RUN_CUDA(B, T, C, w, u, k, v):
     return WKV.apply(B, T, C, w.cuda(), u.cuda(), k.cuda(), v.cuda())
+'''
+
+def RUN_CUDA(B, T, C, w, u, k, v, time_curve=.1):
+    # this shall equal the formula
+
+    ek = torch.exp(k.transpose(1,2))
+    ekv = ek * v.transpose(1,2)
+
+    time_w = torch.cat([torch.exp(w).unsqueeze(1) * time_curve, u.unsqueeze(1)], dim=-1)
+    w = torch.exp(time_w).unsqueeze(1)
+
+    wkv = F.conv1d(nn.ZeroPad2d((T-1, 0, 0, 0))(ekv), w, groups=C)
+    wk = F.conv1d(nn.ZeroPad2d((T-1, 0, 0, 0))(ek), w, groups=C)
+
+    return (wkv / wk).transpose(1,2)
 
 ########################################################################################################
 # RWKV: RWKV Time-mix + RWKV Channel-mix
@@ -134,6 +150,9 @@ def RWKV_Init(module, config):  # fancy initialization of all lin & emb layer in
                 nn.init.normal_(m.weight, mean=0.0, std=-scale)
 
 
+
+
+
 class RWKV_TimeMix(nn.Module):
     def __init__(self, config, layer_id):
         super().__init__()
@@ -146,7 +165,7 @@ class RWKV_TimeMix(nn.Module):
         with torch.no_grad(): # fancy init
             ratio_0_to_1 = (layer_id / (config.n_layer - 1)) # 0 to 1
             ratio_1_to_almost0 = (1.0 - (layer_id / config.n_layer)) # 1 to ~0
-            
+
             # fancy time_decay
             decay_speed = torch.ones(attn_sz)
             for h in range(attn_sz):
@@ -157,7 +176,7 @@ class RWKV_TimeMix(nn.Module):
             # fancy time_first
             zigzag = (torch.tensor([(i+1)%3 - 1 for i in range(attn_sz)]) * 0.5)
             self.time_first = nn.Parameter(torch.ones(attn_sz) * math.log(0.3) + zigzag)
-            
+
             # fancy time_mix
             x = torch.ones(1, 1, config.n_embd)
             for i in range(config.n_embd):
@@ -165,7 +184,7 @@ class RWKV_TimeMix(nn.Module):
             self.time_mix_k = nn.Parameter(torch.pow(x, ratio_1_to_almost0))
             self.time_mix_v = nn.Parameter(torch.pow(x, ratio_1_to_almost0) + 0.3 * ratio_0_to_1)
             self.time_mix_r = nn.Parameter(torch.pow(x, 0.5 * ratio_1_to_almost0))
-            
+
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
 
         self.key = nn.Linear(config.n_embd, attn_sz, bias=False)
@@ -268,7 +287,7 @@ class Block(nn.Module):
 
     def forward(self, x):
         if self.layer_id == 0:
-            x = self.ln0(x)        
+            x = self.ln0(x)
         if self.layer_id == 0 and self.config.model_type == 'RWKV-ffnPre':
             x = x + self.ffnPre(self.ln1(x))  # better in some cases
         else:
@@ -303,7 +322,7 @@ class GPT(nn.Module):
 
         try:
             if os.environ['RWKV_LOAD_MODEL'] == str(False):
-                RWKV_Init(self, config) 
+                RWKV_Init(self, config)
         except:
             pass
 
@@ -355,7 +374,7 @@ class GPT(nn.Module):
             k = self.head_k(x)[:, :T, :]
             c = (q @ k.transpose(-2, -1)) * (1.0 / RWKV_HEAD_QK_DIM)
             c = c.masked_fill(self.copy_mask[:T, :T] == 0, 0)
-            
+
             if os.environ['RWKV_FLOAT_MODE'] == 'fp16':
                 c = c @ F.one_hot(idx, num_classes=self.config.vocab_size).half()
             elif os.environ['RWKV_FLOAT_MODE'] == 'bf16':
