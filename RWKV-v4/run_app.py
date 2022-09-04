@@ -52,7 +52,8 @@ NUM_TRIALS=1
 LENGTH_PER_TRIAL=100
 
 
-def predict(context):
+def predict(context, LENGTH_PER_TRIAL, TEMPERATURE):
+    LENGTH_PER_TRIAL = int(LENGTH_PER_TRIAL)
     if tokenizer.charMode:
         context = tokenizer.refine_context(context)
         ctx = [tokenizer.stoi.get(s, tokenizer.UNKNOWN_CHAR) for s in context]
@@ -99,18 +100,26 @@ def predict(context):
                 print(ch, end='', flush=True)
             else:
                 ch = tokenizer.tokenizer.decode(int(char))
-                print(ch, end='', flush=True)
+                #print(ch, end='', flush=True)
                 context += ch
             ctx += [char]
 
         t_end = time.time_ns()
         print("\n----------", round((t_end - t_begin) / (10 ** 9), 2), end='s ')
-        print(f"Message: {context}")
         return context
 
-INPUTS = gr.inputs.Textbox()
+INPUTS = [
+    gr.inputs.Textbox(lines=2),
+    gr.inputs.Number(100, label="ctx len"),
+    gr.inputs.Number(1, label="temp"),
+
+]
+OUTPUTS = gr.inputs.Textbox(lines=20)
+
 INTERFACE = gr.Interface(fn=predict,
-    inputs=INPUTS, outputs=INPUTS, title="RKWV-RNN",
+    inputs=INPUTS,
+    outputs=OUTPUTS,
+    title="RKWV-RNN",
 
     description="RKWV-RNN is GPT2 like model (1.5B)",
     thumbnail="RKWV-RNN",
