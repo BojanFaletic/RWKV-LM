@@ -15,18 +15,22 @@ torch.backends.cudnn.allow_tf32 = True
 torch.backends.cuda.matmul.allow_tf32 = True
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 
+torch.manual_seed(0)
+
+#os.environ["CUDA_HOME"] = "cuda"
+
 ########################################################################################################
 # Step 1: set model
-# 
+#
 # Set TOKEN_MODE to 'char' or 'bpe' if the model is trained by 'train.py' from scratch.
 #
 # Set TOKEN_MODE to 'pile' if you want to test pre-trained pile models.
 ########################################################################################################
 
-TOKEN_MODE = 'char' # char / bpe / pile
+TOKEN_MODE = 'pile' # char / bpe / pile
 
-n_layer = 6
-n_embd = 512
+n_layer = 24
+n_embd = 2048
 ctx_len = 1024
 
 if TOKEN_MODE == 'char':
@@ -46,19 +50,11 @@ elif TOKEN_MODE == 'pile':
 
     #---> you can set MODEL_NAME to your fine-tuned model <---
 
-    MODEL_NAME = 'RWKV-4-Pile-169M-20220807-8023'
-    # MODEL_NAME = 'trained-11'
-    n_layer = 12
-    n_embd = 768
-    ctx_len = 1024
+    MODEL_NAME = 'RWKV-4-Pile-1B5-20220903-8040'
 
-    # MODEL_NAME = 'RWKV-4-Pile-430M-20220808-8066'
-    # n_layer = 24
-    # n_embd = 1024
-    # ctx_len = 1024
 
-os.environ['RWKV_FLOAT_MODE'] = 'fp32'  # 'bf16' / 'fp16' / 'fp32' (note: only using fp32 at this moment)
-os.environ['RWKV_RUN_DEVICE'] = 'cpu'   # 'cpu' (already very fast) or 'cuda'
+os.environ['RWKV_FLOAT_MODE'] = 'fp16'  # 'bf16' / 'fp16' / 'fp32' (note: only using fp32 at this moment)
+os.environ['RWKV_RUN_DEVICE'] = 'cuda'   # 'cpu' (already very fast) or 'cuda'
 model_type = 'RWKV' # 'RWKV' or 'RWKV-ffnPre'
 
 ########################################################################################################
@@ -68,7 +64,8 @@ model_type = 'RWKV' # 'RWKV' or 'RWKV-ffnPre'
 # context = 'A'
 # context = "\nIn the"
 # context = '\nSugar:'
-context = '\nIn a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese.'
+# context = '\nIn a shocking finding, scientist discovered a herd of dragons living in a remote, previously unexplored valley, in Tibet. Even more surprising to the researchers was the fact that the dragons spoke perfect Chinese.'
+context = "Elon Musk "
 
 NUM_TRIALS = 999
 LENGTH_PER_TRIAL = 333
@@ -83,6 +80,7 @@ DEBUG_DEBUG = False  # True False --> show softmax output
 
 print(f'Loading {MODEL_NAME}...')
 from src.model_run import RWKV_RNN
+
 model = RWKV_RNN(MODEL_NAME, os.environ['RWKV_RUN_DEVICE'], model_type, n_layer, n_embd, ctx_len)
 tokenizer = TOKENIZER(WORD_NAME, UNKNOWN_CHAR=UNKNOWN_CHAR)
 
