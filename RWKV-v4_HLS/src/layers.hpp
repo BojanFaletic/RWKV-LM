@@ -15,7 +15,7 @@ public:
         weights = Tensor2d<T, N, M>::ones();
     }
 
-    template<typename tt, uint A, uint B>
+    template <typename tt, uint A, uint B>
     Tensor2d<T, A, N> operator()(Tensor2d<tt, A, B> const &data)
     {
         static_assert(std::is_same<tt, T>::value, "Not correct type");
@@ -28,10 +28,13 @@ public:
 
         Tensor2d<T, width, height> tmp;
 
-        for (uint h = 0; h<height; h++){
-            for (uint w = 0; w<width; w++){
+        for (uint h = 0; h < height; h++)
+        {
+            for (uint w = 0; w < width; w++)
+            {
                 T acc = 0;
-                for (uint d=0; d<dim; d++){
+                for (uint d = 0; d < dim; d++)
+                {
                     acc += data[h][d] * weights[w][d];
                 }
                 tmp[w][h] = acc;
@@ -41,7 +44,6 @@ public:
     }
 };
 
-
 template <typename T, uint N>
 class LayerNorm
 {
@@ -49,6 +51,7 @@ private:
     Tensor1d<T, N> weights;
     Tensor1d<T, N> bias;
     const float eps = 1e-5;
+
 public:
     LayerNorm()
     {
@@ -56,6 +59,7 @@ public:
         bias = Tensor1d<T, N>::zeros();
     }
 
+#if 0
     template<typename tt, uint M>
     Tensor1d<T, N> operator()(Tensor1d<tt, M> const &data)
     {
@@ -66,12 +70,13 @@ public:
         out = out * weights + bias;
         return out;
     }
+#endif
 
-    template<typename tt, uint H, uint W>
-    Tensor1d<T, N> operator()(Tensor2d<tt, H, W> const &data)
+    template <typename tt, uint H, uint W>
+    Tensor2d<tt, H, W> operator()(Tensor2d<tt, H, W> const &data)
     {
-        Tensor2d out = (data - data.mean()); // / std::sqrt(data.var() + eps);
-        //out = out * weights + bias;
+        Tensor2d out = (data - data.mean()) / std::sqrt(data.var() + eps);
+        out = out * weights;// + bias;
         //return out;
         return {};
     }

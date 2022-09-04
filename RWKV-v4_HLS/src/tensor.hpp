@@ -37,7 +37,13 @@ public:
     std::array<T, len> tensor;
 
 public:
+    Tensor1d<uint, 1> shape() const{
+        return std::array<uint, 1>{len};
+    }
+
     Tensor1d() = default;
+
+    Tensor1d(Tensor1d const &ten) : tensor{ten.tensor}{}
 
     Tensor1d(const std::array<T, len> &init) : tensor{init}
     {
@@ -95,12 +101,37 @@ public:
         return out;
     }
 
+#if 0
     Tensor1d operator-(T const i) const
     {
         Tensor1d out{tensor};
         std::for_each_n(out.tensor.begin(), len, [&](T &x)
                         { x -= i; });
         return out;
+    }
+#endif
+
+
+    template<typename Tt, uint ll>
+    Tensor1d operator-(Tensor1d<Tt, ll> const &ten) const
+    {
+        static_assert(std::is_same<T, Tt>::value, "Dtype not match in -");
+        static_assert(len == 1 | ll == 1 | len == ll, "length mismatch in -");
+
+        if constexpr (len == ll || ll == 1) {
+            Tensor1d out{tensor};
+
+            uint j=0;
+            std::for_each_n(out.tensor.begin(), len, [&](T &x)
+                            { x -= ten[j++]; });
+
+            return out;
+        }
+
+        std::array<Tt, ll> out{ten};
+        std::for_each_n(out.begin(), len, [&](T &x)
+                        { x -= tensor[0]; });
+        return {out};
     }
 
     Tensor1d operator/(T const i)
@@ -176,7 +207,11 @@ private:
     std::array<Tensor1d<T, w>, h> tensor;
 
 public:
-    std::array<uint, 2> shape{h, w};
+
+    Tensor1d<uint, 2> shape(){
+        return std::array<uint, 2>{h, w};
+    }
+
     Tensor2d() = default;
 
     Tensor2d(const std::array<Tensor1d<T, w>, h> &init) : tensor{init}
@@ -233,22 +268,63 @@ public:
     Tensor2d<T, h, w> operator-(Tt const i) const{
         Tensor2d out{tensor};
 
-        // TODO: FIX this
         for (Tensor1d<T, w> &el : out.tensor){
-            for (auto &ee : el.tensor){
-                std::cout << ee;
-                //ee = ee - i;
+            el = el - i;
+        }
+        return out;
+    }
+
+    // for 1d vector
+    template<typename Tt, uint len>
+    Tensor2d<T, h, w> operator-(Tensor1d<Tt, len> const &vect) const{
+        Tensor2d out{tensor};
+
+        std::cout << vect.shape() << '\n';
+        std::cout << out.shape() << '\n';
+
+        for (auto &el : out.tensor){
+            el = el - vect;
+        }
+        return out;
+    }
+
+    template<typename Tt>
+    Tensor2d<T, h, w> operator/(Tt const &ten) const{
+        Tensor2d<T, h, w> out{tensor};
+
+        for (auto &el : out.tensor){
+            el = el / ten;
+        }
+        return out;
+    }
+
+
+    template<typename Tt, uint ll>
+    Tensor2d<T, h, w> operator/(Tensor1d<Tt, ll> const &ten) const{
+        Tensor2d out{tensor};
+
+        static_assert((h == ll) || (h == 1), "Dimention 0 mismach /");
+
+        if constexpr (h == 1){
+            for (auto &el : out.tensor){
+                el = el / ten[0];
             }
+            return out;
+        }
+
+        uint j=0;
+        for (auto &el : out.tensor){
+            el = el / ten[j++];
         }
         return out;
     }
 
     template<typename Tt, uint len>
-    Tensor2d<T, h, w> operator/(Tensor1d<Tt, len> const &ten) const{
+    Tensor2d<T, h, w> operator*(Tensor1d<Tt, len> const &ten) const{
         Tensor2d<T, h, w> out{tensor};
 
         for (auto &el : out.tensor){
-            el = el / ten;
+            el = el * ten;
         }
         return out;
     }
@@ -263,22 +339,22 @@ public:
         return tensor[idx];
     }
 
-    Tensor1d<T, w> mean() const
+    Tensor1d<T, h> mean() const
     {
-        std::array<T, w> mean_values;
-        for (uint i=0; i<w; i++){
+        std::array<T, h> mean_values;
+        for (uint i=0; i<h; i++){
             mean_values[i] = tensor[i].mean();
         }
-        return Tensor1d<T, w>(mean_values);
+        return {mean_values};
     }
 
-    Tensor1d<T, w> var() const
+    Tensor1d<T, h> var() const
     {
-        std::array<T, w> var_values;
-        for (uint i=0; i<w; i++){
+        std::array<T, h> var_values;
+        for (uint i=0; i<h; i++){
             var_values[i] = tensor[i].var();
         }
-        return Tensor1d<T, w>(var_values);
+        return {var_values};
     }
 };
 
@@ -289,7 +365,10 @@ private:
     std::array<Tensor2d<T, w, h>, z> tensor;
 
 public:
-    std::array<uint, 3> SH{h, w, z};
+    Tensor1d<uint, 3> shape(){
+        return std::array<uint, 3>{h, w, z};
+    }
+
     Tensor3d() = default;
 
     Tensor3d(const std::array<Tensor2d<T, w, h>, z> &init) : tensor{init}
