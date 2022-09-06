@@ -9,7 +9,7 @@ import torch
 from torch.nn import functional as F
 from src.utils import TOKENIZER, Dataset
 from src.model_run import RWKV_RNN
-
+from tqdm import trange
 
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.allow_tf32 = True
@@ -64,7 +64,6 @@ def predict(context, LENGTH_PER_TRIAL, TEMPERATURE):
 
     for TRIAL in range(NUM_TRIALS):
         t_begin = time.time_ns()
-        print(('-' * 30) + context, end='')
         ctx = src_ctx.copy()
         model.clear()
         if TRIAL == 0:
@@ -79,7 +78,7 @@ def predict(context, LENGTH_PER_TRIAL, TEMPERATURE):
         else:
             model.load(init_state)
 
-        for i in range(src_len, src_len + LENGTH_PER_TRIAL):
+        for i in trange(src_len, src_len + LENGTH_PER_TRIAL, mininterval=1):
             x = ctx[:i+1]
             x = x[-ctx_len:]
 
