@@ -8,24 +8,44 @@ import logging
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-#from deepspeed.ops.adam import FusedAdam
+'''
+try:
+    from deepspeed.ops.adam import FusedAdam
+except:
+    pass # some poor windows users cant install deepspeed
+'''
 
 logger = logging.getLogger(__name__)
 
 RWKV_HEAD_QK_DIM = 0
 print(f'\nRWKV_HEAD_QK_DIM {RWKV_HEAD_QK_DIM}\n')
 
+class L2Wrap(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, loss, y):
+        ctx.save_for_backward(y)
+        return loss
+    @staticmethod
+    def backward(ctx, grad_output):
+        y = ctx.saved_tensors[0]
+        # to encourage the logits to be close to 0
+        factor = 1e-4 / (y.shape[0] * y.shape[1])
+        maxx, ids = torch.max(y, -1, keepdim=True)
+        gy = torch.zeros_like(y)
+        gy.scatter_(-1, ids, maxx * factor)
+        return (grad_output, gy)
+
 ########################################################################################################
 # CUDA Kernel
 ########################################################################################################
 
-T_MAX = 4096 # increase this if your ctx_len is long
+T_MAX = 1024 # increase this if your ctx_len is long [NOTE: TAKES LOTS OF VRAM!]
 # it's possible to go beyond CUDA limitations if you slice the ctx and pass the hidden state in each slice
 
 '''
 from torch.utils.cpp_extension import load
 wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"],
-                verbose=True, extra_cuda_cflags=['--use_fast_math', '--extra-device-vectorization', f'-DTmax={T_MAX}'])
+                verbose=True, extra_cuda_cflags=['-res-usage', '--maxrregcount 60', '--use_fast_math', '-O3', '-Xptxas -O3', f'-DTmax={T_MAX}'])
 
 class WKV(torch.autograd.Function):
     @staticmethod
@@ -35,25 +55,25 @@ class WKV(torch.autograd.Function):
         ctx.C = C
         assert T <= T_MAX
         assert B * C % min(C, 1024) == 0
-        if os.environ['RWKV_FLOAT_MODE'] != 'fp32':
-            w = -torch.exp(w.float().contiguous())
-            u = u.float().contiguous()
-            k = k.float().contiguous()
-            v = v.float().contiguous()
-        else:
+        if '32' in os.environ['RWKV_FLOAT_MODE']:
             w = -torch.exp(w.contiguous())
             u = u.contiguous()
             k = k.contiguous()
             v = v.contiguous()
+        else:
+            w = -torch.exp(w.float().contiguous())
+            u = u.float().contiguous()
+            k = k.float().contiguous()
+            v = v.float().contiguous()
         ctx.save_for_backward(w, u, k, v)
         y = torch.empty((B, T, C), device='cuda', memory_format=torch.contiguous_format)
         wkv_cuda.forward(B, T, C, w, u, k, v, y)
-        if os.environ['RWKV_FLOAT_MODE'] == 'fp16':
+        if '32' in os.environ['RWKV_FLOAT_MODE']:
+            return y
+        elif os.environ['RWKV_FLOAT_MODE'] == 'fp16':
             return y.half()
         elif os.environ['RWKV_FLOAT_MODE'] == 'bf16':
             return y.bfloat16()
-        elif os.environ['RWKV_FLOAT_MODE'] == 'fp32':
-            return y
 
     @staticmethod
     def backward(ctx, gy):
@@ -63,22 +83,22 @@ class WKV(torch.autograd.Function):
         assert T <= T_MAX
         assert B * C % min(C, 1024) == 0
         w, u, k, v = ctx.saved_tensors
-        gw = torch.zeros((B, C), device='cuda')
-        gu = torch.zeros((B, C), device='cuda')
-        gk = torch.zeros((B, T, C), device='cuda')
-        gv = torch.zeros((B, T, C), device='cuda')
-        if os.environ['RWKV_FLOAT_MODE'] != 'fp32':
-            wkv_cuda.backward(B, T, C, w, u, k, v, gy.float().contiguous(), gw, gu, gk, gv)
-        else:
+        gw = torch.zeros((B, C), device='cuda').contiguous()
+        gu = torch.zeros((B, C), device='cuda').contiguous()
+        gk = torch.zeros((B, T, C), device='cuda').contiguous()
+        gv = torch.zeros((B, T, C), device='cuda').contiguous()
+        if '32' in os.environ['RWKV_FLOAT_MODE']:
             wkv_cuda.backward(B, T, C, w, u, k, v, gy.contiguous(), gw, gu, gk, gv)
+        else:
+            wkv_cuda.backward(B, T, C, w, u, k, v, gy.float().contiguous(), gw, gu, gk, gv)
         gw = torch.sum(gw, dim=0)
         gu = torch.sum(gu, dim=0)
-        if os.environ['RWKV_FLOAT_MODE'] == 'fp16':
+        if '32' in os.environ['RWKV_FLOAT_MODE']:
+            return (None, None, None, gw, gu, gk, gv)
+        elif os.environ['RWKV_FLOAT_MODE'] == 'fp16':
             return (None, None, None, gw.half(), gu.half(), gk.half(), gv.half())
         elif os.environ['RWKV_FLOAT_MODE'] == 'bf16':
             return (None, None, None, gw.bfloat16(), gu.bfloat16(), gk.bfloat16(), gv.bfloat16())
-        elif os.environ['RWKV_FLOAT_MODE'] == 'fp32':
-            return (None, None, None, gw, gu, gk, gv)
 
 def RUN_CUDA(B, T, C, w, u, k, v):
     return WKV.apply(B, T, C, w.cuda(), u.cuda(), k.cuda(), v.cuda())
@@ -102,58 +122,64 @@ def RUN_CUDA(B, T, C, w, u, k, v, time_curve=.1):
 # RWKV: RWKV Time-mix + RWKV Channel-mix
 ########################################################################################################
 
-def RWKV_Init(module, config):  # fancy initialization of all lin & emb layer in the module
-    print('\n[--> first run, init model params (very slow for large models) <--]')
-    print('[so you shall only do it for 1 single GPU and save the checkpt and load it when using multiple GPU]\n')
-    for m in module.modules():
-        if not isinstance(m, (nn.Linear, nn.Embedding)):
-            continue
+def RWKV_Init(model, args):  # fancy initialization of all lin & emb layer in the model
+    print("\n[--> first run, init model params (very slow for large models) <--]")
+    print("[so you shall only do it for 1 single GPU and save the checkpt and load it when using multiple GPU]\n")
+
+    for mm in model.modules():
+        if "RecursiveScriptModule" in str(type(mm)):
+            if mm.original_name not in ["Linear"]:
+                continue
+            ww = None
+            for name, param in mm.named_parameters():
+                if name == "weight":
+                    ww = param
+        else:
+            m = mm
+            if not isinstance(m, (nn.Linear, nn.Embedding)):
+                continue
+            ww = m.weight
         with torch.no_grad():
-            name = '[unknown weight]'
-            for name, parameter in module.named_parameters():  # find the name of the weight
-                if id(m.weight) == id(parameter):
+            name = "[unknown weight]"
+            for name, parameter in model.named_parameters():  # find the name of the weight
+                if id(ww) == id(parameter):
                     break
 
-            shape = m.weight.data.shape
+            shape = ww.shape
             gain = 1.0
             scale = 1.0  # extra scale for gain
 
             if isinstance(m, nn.Embedding):
                 gain = math.sqrt(max(shape[0], shape[1]))
-                if shape[0] == config.vocab_size and shape[1] == config.n_embd:  # token emb?
+                if shape[0] == args.vocab_size and shape[1] == args.n_embd:  # token emb?
                     scale = 1e-4
                 else:
                     scale = 0
 
             if isinstance(m, nn.Linear):
-                if m.bias is not None:
-                    m.bias.data.zero_()
                 if shape[0] > shape[1]:
                     gain = math.sqrt(shape[0] / shape[1])
-                if shape[0] == config.vocab_size and shape[1] == config.n_embd:  # final projection?
+                if shape[0] == args.vocab_size and shape[1] == args.n_embd:  # final projection?
                     scale = 0.5
 
-            if hasattr(m, 'scale_init'):
+            if hasattr(m, "scale_init"):
                 scale = m.scale_init
 
-            # print(str(shape[0]).ljust(5), str(shape[1]).ljust(5), f'{round(scale,2):g}'.ljust(4), name)
+            # print(f"{str(shape[0]).ljust(5)} {str(shape[1]).ljust(5)} {str(scale).ljust(4)} {name}")
 
             gain *= scale
             if scale == -999:
-                nn.init.eye_(m.weight)
+                nn.init.eye_(ww)
             elif gain == 0:
                 # zero init is great for some RWKV matrices
-                nn.init.zeros_(m.weight)
+                nn.init.zeros_(ww)
             elif gain > 0:
-                nn.init.orthogonal_(m.weight, gain=gain)
+                nn.init.orthogonal_(ww, gain=gain)
             else:
-                nn.init.normal_(m.weight, mean=0.0, std=-scale)
+                nn.init.normal_(ww, mean=0.0, std=-scale)
 
 
-
-
-
-class RWKV_TimeMix(nn.Module):
+class RWKV_TimeMix(torch.jit.ScriptModule):
     def __init__(self, config, layer_id):
         super().__init__()
         self.layer_id = layer_id
@@ -197,11 +223,11 @@ class RWKV_TimeMix(nn.Module):
         self.receptance.scale_init = 0
         self.output.scale_init = 0
 
-    def forward(self, x):
-        B, T, C = x.size() # x = (Batch,Time,Channel)
+    @torch.jit.script_method
+    def jit_func(self, x):
 
         # Mix x with the previous timestep to produce xk, xv, xr
-        xx = self.time_shift(x) # self.time_shift = nn.ZeroPad2d((0,0,1,-1))
+        xx = self.time_shift(x)
         xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
         xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
         xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
@@ -210,13 +236,21 @@ class RWKV_TimeMix(nn.Module):
         k = self.key(xk)
         v = self.value(xv)
         r = self.receptance(xr)
+        sr = torch.sigmoid(r)
 
-        rwkv = torch.sigmoid(r) * RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v)
+        return sr, k, v
+
+    def forward(self, x):
+        B, T, C = x.size() # x = (Batch,Time,Channel)
+
+        sr, k, v = self.jit_func(x)
+
+        rwkv = sr * RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v)
         rwkv = self.output(rwkv)
         return rwkv
 
 
-class RWKV_ChannelMix(nn.Module):
+class RWKV_ChannelMix(torch.jit.ScriptModule):
     def __init__(self, config, layer_id):
         super().__init__()
         self.layer_id = layer_id
@@ -241,6 +275,7 @@ class RWKV_ChannelMix(nn.Module):
         self.value.scale_init = 0
         self.receptance.scale_init = 0
 
+    @torch.jit.script_method
     def forward(self, x):
         xx = self.time_shift(x)
         xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
@@ -279,7 +314,7 @@ class Block(nn.Module):
             self.ln0 = nn.LayerNorm(config.n_embd)
 
         if self.layer_id == 0 and self.config.model_type == 'RWKV-ffnPre':
-            self.ffnPre = RWKV_ChannelMix(config, layer_id+1000)
+            self.ffnPre = RWKV_ChannelMix(config, 0)
         else:
             self.att = RWKV_TimeMix(config, layer_id)
 
@@ -354,7 +389,11 @@ class GPT(nn.Module):
                         for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         ]
 
-        optimizer = FusedAdam(optim_groups, lr=train_config.learning_rate, betas=train_config.betas, eps=train_config.eps, bias_correction=True, adam_w_mode=False, weight_decay=0, amsgrad=False)
+        try:
+            optimizer = FusedAdam(optim_groups, lr=train_config.learning_rate, betas=train_config.betas, eps=train_config.eps, bias_correction=True, adam_w_mode=False, weight_decay=0, amsgrad=False)
+        except:
+            print('\n\nDeepSpeed not found. Using torch optimizer instead (probably slower)\n\n')
+            optimizer = torch.optim.Adam(optim_groups, lr=train_config.learning_rate, betas=train_config.betas, eps=train_config.eps)
 
         return optimizer
 
@@ -375,12 +414,12 @@ class GPT(nn.Module):
             c = (q @ k.transpose(-2, -1)) * (1.0 / RWKV_HEAD_QK_DIM)
             c = c.masked_fill(self.copy_mask[:T, :T] == 0, 0)
 
-            if os.environ['RWKV_FLOAT_MODE'] == 'fp16':
+            if '32' in os.environ['RWKV_FLOAT_MODE']:
+                c = c @ F.one_hot(idx, num_classes=self.config.vocab_size)
+            elif os.environ['RWKV_FLOAT_MODE'] == 'fp16':
                 c = c @ F.one_hot(idx, num_classes=self.config.vocab_size).half()
             elif os.environ['RWKV_FLOAT_MODE'] == 'bf16':
                 c = c @ F.one_hot(idx, num_classes=self.config.vocab_size).bfloat16()
-            elif os.environ['RWKV_FLOAT_MODE'] == 'fp32':
-                c = c @ F.one_hot(idx, num_classes=self.config.vocab_size)
 
             x = self.head(x) + c
         else:
@@ -390,4 +429,4 @@ class GPT(nn.Module):
         if targets is not None:
             loss = F.cross_entropy(x.view(-1, x.size(-1)), targets.to(x.device).view(-1))
 
-        return x, loss
+        return L2Wrap.apply(loss, x)

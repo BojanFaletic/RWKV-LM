@@ -10,11 +10,13 @@ RWKV-3 1.5B on A40 (tf32) = always 0.015 sec/token, tested using simple pytorch 
 
 GPT2-XL 1.3B on A40 (tf32) = 0.032 sec/token (for ctxlen 1000), tested using HF, GPU utilization 45% too (interesting), VRAM 9655M
 
+Training speed: RWKV-4 1.5B BF16 ctxlen1024 = 106K tokens/s on 8xA100 40G.
+
 ## Join our Discord: https://discord.gg/bDSBUMeFpc :)
 
 You are welcome to join the RWKV discord https://discord.gg/bDSBUMeFpc to build upon it. We have plenty of potential compute (A100 40Gs) now (thanks to CoreWeave), so if you have interesting ideas I can run them.
 
-I am training RWKV-3 and RWKV-4 on the Pile (https://github.com/BlinkDL/RWKV-v2-RNN-Pile):
+I am training RWKV-3 and RWKV-4 on the Pile (https://huggingface.co/BlinkDL):
 
 ![RWKV-v4-1.5B-Pile](RWKV-v4-1.5B-Pile.png)
 
@@ -57,6 +59,8 @@ Use https://github.com/BlinkDL/RWKV-LM/tree/main/RWKV-v4 for the latest RWKV-4 m
 
 Run RWKV-4 Pile models in your browser (and onnx version): see this issue https://github.com/BlinkDL/RWKV-LM/issues/7
 
+RWKV-4 Web Demo: https://josephrocca.github.io/rwkv-v4-web/demo/ (note: only greedying sampling for now)
+
 For the old RWKV-2: see the release here for a 27M params model on enwik8 with 0.72 BPC(dev). Run run.py in https://github.com/BlinkDL/RWKV-LM/tree/main/RWKV-v2-RNN. You can even run it in your browser: https://github.com/BlinkDL/AI-Writer/tree/main/docs/eng https://blinkdl.github.io/AI-Writer/eng/ (this is using tf.js WASM single-thread mode).
 
 ### Training / Fine-tuning
@@ -69,7 +73,7 @@ You will be training the "GPT" version because it's paralleziable and faster to 
 
 Read the inference code in src/model.py and try using the final hidden state（.xx .aa .bb) as a faithful sentence embedding for other tasks. Probably you shall begin with .xx and .aa/.bb (.aa divided by .bb).
 
-Colab for fine-tuning RWKV-2 Pile models: https://colab.research.google.com/drive/1BwceyZczs5hQr1wefmCREonEWhY-zeST
+Colab for fine-tuning RWKV-4 Pile models: https://colab.research.google.com/github/resloved/RWKV-notebooks/blob/master/RWKV_v4_RNN_Pile_Fine_Tuning.ipynb
 
 ## How it works
 
